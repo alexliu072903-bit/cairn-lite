@@ -1,5 +1,7 @@
 # Cairn Lite
 
+[English](README.md) | [简体中文](README.zh-CN.md)
+
 **A portable project-context protocol for handoffs across AI agents.**
 
 Cairn Lite lets Codex, Claude, and other file-capable agents recover the same
