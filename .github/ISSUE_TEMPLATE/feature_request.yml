@@ -1,0 +1,25 @@
+name: Feature request
+description: Propose a focused change to the protocol or CLI
+title: "[Proposal] "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What concrete cross-agent handoff problem is unresolved?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed change
+    validations:
+      required: true
+  - type: textarea
+    id: boundaries
+    attributes:
+      label: Safety and removal
+      description: How does the proposal stay non-destructive and removable?
+    validations:
+      required: true
