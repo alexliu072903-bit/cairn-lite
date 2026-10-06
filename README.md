@@ -6,7 +6,9 @@
 
 Cairn Lite lets Codex, Claude, and other file-capable agents recover the same
 project decisions, evidence, and boundaries from a small set of plain Markdown
-files.
+files. With handoffs, one agent can plan a piece of work, another can carry it
+out, and both read and write the same file, so a human no longer has to relay
+prompts, progress, and questions between them.
 
 It is not a universal AI memory. It is a transparent, Git-friendly project
 learning layer that stays under your control.
@@ -29,6 +31,16 @@ enter project
 
 This reduces repeated context handoffs without turning `AGENTS.md` or
 `CLAUDE.md` into an ever-growing memory dump.
+
+When work moves between agents, a handoff carries it there and back:
+
+```text
+planner writes a handoff
+  → executor finds it through the same instruction block
+  → executor restates the task, works, and logs each step
+  → a blocking question is written down and the handoff is marked blocked
+  → the planner or the human answers in the same file
+```
 
 ## Install
 
@@ -98,7 +110,9 @@ Record a change only when at least one condition is true:
 - a validated pattern may be reusable elsewhere.
 
 Do not record routine progress, raw meeting notes, task status, unverified
-guesses, secrets, credentials, or personal data.
+guesses, secrets, credentials, or personal data in topics or the log. Task
+status for work passed between agents belongs in a [handoff](#handoffs), which
+stays out of Git by default.
 
 Product Frames, PRDs, code, schemas, and task systems remain authoritative for
 their own scope. Cairn Lite records why a conclusion changed and what evidence
