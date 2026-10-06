@@ -2,31 +2,29 @@
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
-**一个用于 AI Agent 之间交接的可移植项目上下文协议。**
+**让两个 AI Agent 通过同一张交接单协作的本地协议。**
 
-Cairn Lite 让 Codex、Claude 和其他能够访问文件的 Agent，通过一组简洁的
-Markdown 文件恢复相同的项目判断、证据和边界。
+计划方写下目标、边界和验收标准；执行方复述、执行、逐步记录，卡住时把问题写回
+同一个文件。人只在三个地方出现：定目标、做决定、验收。
 
-它是一个透明、Git 友好、由你掌控的项目学习层。
+它替代的是这种做法：写一份长交接文档，把提示词贴给另一个 Agent，再在两边来回
+转述进度和问题。
 
 > 当前状态：实验阶段。文件格式已经可用，但在 1.0 前仍可能调整。
 
-## 为什么需要它
-
-Agent 的会话彼此隔离，但项目知识不应该被困在某一次会话里。
-
-Cairn Lite 为不同 Agent 提供同一条上下文恢复路径：
+## 一次完整的循环
 
 ```text
-进入项目
-  → 读取薄入口规则
-  → 浏览最新 5 条日志
-  → 只打开当前任务相关的 topic
-  → 只记录重要变化
+人：一句话目标
+  → 计划方（例如云端 Claude）写交接单：目标、决定、建议做法、验收、不做什么
+  → 执行方（例如本机 Codex）进入项目，通过 AGENTS.md 自己找到交接单
+  → 执行方先写复述，再执行，每完成一步在 Log 里记一条，附证据
+  → 遇到会改变决定、验收或范围的问题：写进 Questions，标成 blocked，停下
+  → 计划方或人在同一个文件里回答；执行方被叫醒时先重读交接单
+  → 验收全部满足：标成 done
 ```
 
-这样可以减少重复的上下文交接，同时避免把 `AGENTS.md` 或 `CLAUDE.md`
-变成不断膨胀的记忆仓库。
+计划方不用问人「它做到哪了」，直接读交接单；人不用复制粘贴任何东西。
 
 ## 安装
 
@@ -46,135 +44,134 @@ python3 -m pip install -e .
 
 ## 快速开始
 
-在已有项目中初始化 Cairn Lite：
+在要交接的项目里接入协议，然后开一张交接单：
 
 ```bash
 cd /path/to/your-project
 cairn init
-cairn validate
-cairn status
+cairn handoff new site-v1 --title "个人网站 v1" --from claude --to codex \
+  --planner-url https://claude.ai/your-project-link
 ```
 
-`cairn init` 采用追加式写入，并且可以安全地重复执行：
+计划方把 `cairn/handoffs/site-v1.md` 里的 Goal、Decisions、Design、Acceptance、
+Out of scope 填好。之后执行方进入这个项目时会自己找到它，不需要贴提示词。
 
-- 创建缺失的 Cairn 文件；
-- 在已有 `AGENTS.md` 中追加带边界标记、可移除的规则区块；
-- 在需要时向已有 `CLAUDE.md` 追加 `@AGENTS.md`；
-- 不覆盖任何已有项目规则或 Cairn 文件。
-
-可以先预览所有变化：
+随时查看所有交接单的状态：
 
 ```bash
-cairn init --dry-run
+cairn handoff status
 ```
 
-## 生成的目录结构
+`cairn init` 采用追加式写入，可以安全地重复执行，不覆盖任何已有文件；
+可以先用 `cairn init --dry-run` 预览。它会：
 
-```text
-AGENTS.md                    薄入口规则
-CLAUDE.md                    导入 AGENTS.md
-.cairn/
-  PROTOCOL.md                完整读写协议
-  config.json                简洁的机器可读配置
-cairn/
-  LOG.md                     按时间倒序排列的指针索引
-  topics/
-    README.md                topic 格式说明
-    <topic>.md               一个持续演变的项目结论
-```
+- 在 `AGENTS.md` 里追加一个带边界标记、可移除的规则区块，让 Agent 进入项目时
+  先检查有没有写给自己的交接单；
+- 需要时向 `CLAUDE.md` 追加 `@AGENTS.md`；
+- 把 `cairn/handoffs/` 加进 `.gitignore`。交接单是工作过程，经常带有本机路径和
+  私有信息，默认不进 Git。
 
-Agent 只读取最近的日志和当前任务相关的 topic，默认不会加载整个
-`cairn/` 目录。
+## 交接单
 
-## 什么内容应该进入 Cairn
+每件工作一个文件：`cairn/handoffs/<id>.md`。
 
-只有满足以下至少一个条件时才记录：
+头部记录状态：`open`、`acknowledged`、`running`、`blocked`、`done`、`cancelled`，
+以及 `from`、`to` 和可选的 `planner_url`。
 
-- 产品或技术决策发生变化；
-- 某个失败、根因或修复结果得到验证；
-- 已有结论被推翻或显著收窄；
-- 一个已验证的模式可能在其他项目中复用。
+| 部分 | 谁负责 | 规则 |
+|---|---|---|
+| Goal | 人 | 做完时人想要什么 |
+| Decisions | 人 | 只引用已确认的决定，不复制 |
+| Design | 计划方 | 是假设；执行方可以改，但要在 Log 里写明原因 |
+| Acceptance、Out of scope | 人 | 只有负责人能改 |
+| Readback | 执行方 | 开工前先写：目标、不做什么、停在哪 |
+| Log | 执行方 | 每完成一步追加一条，带证据 |
+| Questions | 执行方 | 会改变决定的问题；写下后设为 `blocked` 并停下 |
 
-不要记录日常进度、原始会议笔记、任务状态、未经验证的猜测、密钥、凭证或
-个人数据。
+执行方的规则：
 
-Product Frame、PRD、代码、Schema 和任务系统继续作为各自范围内的权威
-来源。Cairn Lite 记录的是一个结论为什么变化、有哪些证据支持它，而不是
-替代正式事实源。
+1. 开工前用自己的话写 Readback（不超过 6 行），状态设为 `acknowledged`。
+2. 状态设为 `running` 后开始执行；每完成一步，在 Log 里追加一条，附证据。
+3. 问题会改变 Decisions、Acceptance 或 Out of scope 时，写进 Questions，
+   设为 `blocked`，停下。
+4. 所有验收都满足时，设为 `done`。
+5. 每次被叫醒（「继续」、新消息、新会话），先重读交接单，不要凭对话记忆。
+
+交接单里的记录不能代替人的授权。推送、发布这类对外动作，执行方要在自己的对话里
+得到人的确认。
+
+`cairn validate` 会检查状态和内容是否一致：acknowledged 必须有 Readback，blocked
+必须有未回答的问题，done 必须有 Log，`planner_url` 只接受 `https://`。
+
+## 和其他工具配合
+
+Cairn Lite 只管「一件事从派出去到做完」。它可以单独使用，也可以和下面两个工具
+组成一个循环：
+
+- **[cairn-context](https://github.com/alexliu072903-bit/cairn-context)**：
+  记录跨任务长期有效的决定。交接单的 Decisions 只写它的引用，不复制内容。
+- **AirJelly**：执行方停下时读取交接单的状态。`blocked` 或 `done` 时弹出卡片，
+  让人选择下一步；需要重新规划时，按 `planner_url` 把人送回计划方。
 
 ## 命令
 
 | 命令 | 用途 |
 |---|---|
 | `cairn init [path]` | 在不覆盖已有文件的情况下接入协议 |
-| `cairn validate [path]` | 检查目录结构、配置、topic 和日志限制 |
-| `cairn status [path]` | 查看最近变化和 topic 状态 |
-| `cairn test write --agent NAME [path]` | 写入一个不显示在终端中的交接验证码 |
-| `cairn test read --agent NAME [path]` | 由另一个 Agent 读取并验证验证码 |
-| `cairn test clean [path]` | 删除临时验证码 |
+| `cairn handoff new ID --title T --from A --to B [--planner-url URL]` | 新建一张交接单 |
+| `cairn handoff status [path]` | 列出交接单、状态和未回答的问题 |
+| `cairn validate [path]` | 检查目录结构、配置和交接单 |
+| `cairn status [path]` | 同 `cairn handoff status` |
+| `cairn test write/read/clean` | 验证两个 Agent 指向同一个项目目录（见附录） |
 
-所有命令都支持 `--help`。`validate` 和 `status` 还支持 `--json`。
-
-## 跨 Agent 测试
-
-1. 在 Claude Desktop Code 中，将同一个项目设为 **primary folder**。
-2. 让 Claude 执行：
-
-   ```bash
-   cairn test write --agent claude
-   ```
-
-   6 位验证码会写入项目，但不会显示在终端中。
-
-3. 新建一个 Codex 任务，并把同一目录设为 primary folder。
-4. 让 Codex 执行：
-
-   ```bash
-   cairn test read --agent codex
-   ```
-
-只有当另一个 Agent 从相同的真实项目目录中读到验证码时，测试才会通过。
-
-仅仅能够访问文件还不够。还需要在两个 Agent 中分别确认：
-
-```text
-primary folder
-working directory
-自动生效的 AGENTS.md
-```
-
-三项必须全部指向同一个项目根目录。
-
-CLI 只能验证不同的 Agent 标签和同一个真实文件目录，不能验证究竟是哪一个
-AI 产品发出了命令。因此，全新会话测试仍然是验证流程的一部分。
+所有命令都支持 `--help`。`validate`、`status`、`handoff status` 支持 `--json`。
 
 ## 安全与移除
 
-Cairn Lite 不会向外部服务发送数据。默认协议要求：写入任何外部知识库前，
-必须获得人的明确确认。
+Cairn Lite 不会向外部服务发送数据。写入任何外部知识库前，协议要求先得到人的
+明确确认。
 
 移除方式：
 
 1. 删除 `.cairn/` 和 `cairn/`；
 2. 删除 `AGENTS.md` 中 `<!-- cairn-lite:start -->` 与
    `<!-- cairn-lite:end -->` 之间的内容；
-3. 只有在确认没有其他内容依赖它时，才从 `CLAUDE.md` 中删除
-   `@AGENTS.md`。
+3. 只有在确认没有其他内容依赖它时，才从 `CLAUDE.md` 中删除 `@AGENTS.md`。
 
-## 参与贡献
+## 附录
 
-参见 [CONTRIBUTING.md](CONTRIBUTING.md)。提案应保持范围明确、Agent
-无关，并且可以安全移除。
+### 从早期版本升级
+
+早期版本的 Cairn Lite 还带有项目笔记（`cairn/LOG.md` 和 `cairn/topics/`），现在已经
+移除，原因见 [HISTORY.md](HISTORY.md)。旧项目仍然能通过 `cairn validate`，这些文件
+会被忽略，可以保留，也可以删掉。需要长期保存的决定，建议记进 cairn-context。
+
+`cairn init` 不会改写已有的规则区块。要换成新的入口规则，先删除 `AGENTS.md` 中
+`<!-- cairn-lite:start -->` 与 `<!-- cairn-lite:end -->` 之间的内容和
+`.cairn/PROTOCOL.md`，再运行一次 `cairn init`。
+
+### 验证两个 Agent 看到的是同一个目录
+
+交接单能用的前提，是计划方和执行方读写的是同一个真实目录。
+
+1. 在 Claude 里运行 `cairn test write --agent claude`。6 位验证码会写入项目，
+   但不会显示在终端中。
+2. 在 Codex 里，打开同一个目录，运行 `cairn test read --agent codex`。
+3. 通过后运行 `cairn test clean`。
+
+还需要确认两边的 primary folder、working directory 和自动生效的 `AGENTS.md`
+都指向同一个项目根目录。CLI 只能验证目录，不能验证命令究竟来自哪个 AI 产品。
+
+### 其他文档
+
+- [docs/PROTOCOL.md](docs/PROTOCOL.md)：协议规范
+- [HISTORY.md](HISTORY.md)：Cairn Lite 的演变过程
+- [CONTRIBUTING.md](CONTRIBUTING.md)：参与贡献
+- [SECURITY.md](SECURITY.md)：安全与隐私问题报告方式
 
 ## License
 
 [MIT](LICENSE)
-
-## 附录
-
-- [HISTORY.md](HISTORY.md) — Cairn Lite 为什么被设计成现在这样
-- [docs/PROTOCOL.md](docs/PROTOCOL.md) — 协议规范
-- [SECURITY.md](SECURITY.md) — 安全与隐私问题报告方式
 
 ## 致谢
 

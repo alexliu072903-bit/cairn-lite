@@ -10,11 +10,13 @@ AGENTS_BLOCK = f"""\
 {START_MARKER}
 ## Cairn Lite
 
-- Read `.cairn/PROTOCOL.md`, then the latest 5 entries in `cairn/LOG.md`.
-- Read only topic files relevant to the current task.
-- Record only material changes defined by the protocol.
+- Run `cairn handoff status` (without the CLI, read the front matter of
+  `cairn/handoffs/*.md`). If a handoff addressed to you is `open`,
+  `acknowledged`, or `running`, read `.cairn/PROTOCOL.md` and follow it before
+  other work.
 - Do not replace authoritative project documents or existing instructions.
-- External knowledge-base writes require explicit human confirmation.
+- External writes (push, publish, external knowledge bases) require explicit
+  human confirmation in your own conversation.
 {END_MARKER}
 """
 
@@ -23,58 +25,60 @@ PROTOCOL = """\
 
 ## Responsibility
 
-Cairn Lite is the project-learning layer. It keeps the reasoning and evidence
-behind material project conclusions so another session or agent can continue
-without reconstructing history.
+Cairn Lite passes one piece of work from the agent that planned it to the
+agent that carries it out, and carries the results back in the same file.
 
-Product Frames, PRDs, code, schemas, and task systems remain authoritative for
-their own scope. Cairn Lite may point to them but must not duplicate or replace
-them.
+It does not store durable project knowledge. Product Frames, PRDs, code,
+schemas, and task systems remain authoritative for their own scope, and
+durable decisions belong in the decision store a handoff cites (for example
+cairn-context). A handoff points to them; it never copies or replaces them.
 
-## Startup reading
+## Handoffs
 
-1. Read the latest 5 entries in `cairn/LOG.md`.
-2. Identify the topic relevant to the current task.
-3. Read only that topic file.
-4. Read older entries or other topics only when a visible pointer requires it.
+A handoff is a working file, not project knowledge: it lives in
+`cairn/handoffs/<id>.md` and stays out of Git by default. When a handoff
+produces a durable decision, record it in the decision store it cites, with the
+human owner's confirmation.
 
-Do not load the entire `cairn/` directory by default.
+Each handoff has three layers with different owners:
 
-## Material-change test
+- **Decisions**: pointers to confirmed decisions (a decision id or a file
+  path), never copies. Nobody changes them inside a handoff.
+- **Design**: the planner's proposal, a hypothesis. The executor may change
+  it, and records what changed and why in the Log.
+- **Acceptance** and **Out of scope**: only the human owner changes them.
 
-Record a change only when at least one condition is true:
+Executor:
 
-- A product or technical decision changed.
-- A failure, root cause, or fix was verified.
-- An existing conclusion was disproved or materially narrowed.
-- A validated pattern may be reusable in another project.
+1. Before any other work, write the Readback: the goal, what is out of scope,
+   and where you will stop, in your own words, at most 6 lines. Set
+   `status: acknowledged`.
+2. Set `status: running` and work. After each step, append one Log entry:
+   date, step, result, evidence (commit, PR, file, command output), and any
+   deviation from the Design.
+3. When a question would change a Decision, Acceptance, or Out of scope, add
+   it under Questions as `- [ ] ...`, set `status: blocked`, and stop.
+4. When every Acceptance item is met, set `status: done`.
+5. Whenever you are resumed ("continue", a new message, a new session), re-read
+   the handoff file first: the planner may have answered a question or changed
+   the Design there. Do not rely on your conversation memory of the file.
 
-Do not record routine progress, file lists, raw meeting notes, unverified
-guesses, task status, secrets, credentials, or personal data.
+Planner:
 
-## Writing rules
+1. Write the handoff with `cairn handoff new`. Keep it short: point to
+   decisions and sources instead of repeating them. Set `planner_url` (an
+   `https://` link to where you can be reached) so tools can send the human
+   back to you when the work needs re-planning.
+2. On re-entry, read the Readback, Log, and Questions before planning again.
+   Answer a question by changing `- [ ]` to `- [x]` and writing the answer
+   under it; ask the human owner when the answer is theirs to give.
 
-- `cairn/LOG.md` is a short reverse-chronological index.
-- Each LOG entry has at most 6 non-empty body lines.
-- `cairn/topics/<topic>.md` holds the current conclusion for one topic.
-- When a conclusion changes, preserve the prior judgment under Evolution.
-- Add a LOG pointer; do not silently rewrite history.
-- Never write to an external knowledge base without explicit human
-  confirmation of the candidate, scope, and destination.
+Do not delete Log entries or answered questions. `cairn validate` checks the
+statuses and sections.
 
-## Topic contract
-
-Each topic contains:
-
-1. Current judgment
-2. Evidence
-3. Boundaries
-4. Evolution
-5. Sources
-6. Validation log
-
-Allowed status values are `hypothesis`, `validated`, and `invalidated`.
-Unknowns remain hypotheses.
+A record in a handoff is not the human's authorization. Pushing, publishing,
+and other external actions need the human's confirmation in the executor's own
+conversation.
 
 ## Removal
 
@@ -84,45 +88,72 @@ Delete `.cairn/` and `cairn/`, then remove the marked Cairn Lite block from
 
 CONFIG = json.dumps(
     {
-        "version": 1,
-        "latest_log_entries": 5,
+        "version": 2,
         "external_writes_require_confirmation": True,
+        "handoffs_in_git": False,
     },
     indent=2,
 ) + "\n"
 
-LOG = """\
-# Cairn log
+HANDOFF_STATUSES = (
+    "open",
+    "acknowledged",
+    "running",
+    "blocked",
+    "done",
+    "cancelled",
+)
 
-Newest entries appear first. Each entry is a short summary plus a pointer, not
-the full conclusion. Keep each entry to at most 6 non-empty body lines.
-"""
+HANDOFF_HEADINGS = (
+    "Goal",
+    "Decisions",
+    "Design",
+    "Acceptance",
+    "Out of scope",
+    "Readback",
+    "Log",
+    "Questions",
+)
 
-TOPICS_README = """\
-# Topic files
-
-Create one Markdown file per durable project topic.
-
-```markdown
+HANDOFF_TEMPLATE = """\
 ---
-status: hypothesis
-updated: YYYY-MM-DD
+handoff: {id}
+status: open
+from: {from_agent}
+to: {to_agent}
+{planner_line}created: {date}
 ---
 
-# Topic name
+# {title}
 
-## Current judgment
+## Goal
 
-## Evidence
+<!-- One paragraph: what the human owner wants when this is done. -->
 
-## Boundaries
+## Decisions
 
-## Evolution
+<!-- Pointers only, never copies, e.g. `cairn-context: my-project/v1-scope`
+or a file path. The executor does not change these. -->
 
-## Sources
+## Design
 
-## Validation log
-```
+<!-- Hypothesis. The executor may change it and records why in the Log. -->
 
-Allowed status values: `hypothesis`, `validated`, `invalidated`.
+## Acceptance
+
+<!-- Checkable items. Only the human owner changes them. -->
+
+## Out of scope
+
+## Readback
+
+<!-- Executor, before any other work: goal, out of scope, stop point. -->
+
+## Log
+
+<!-- Executor appends: date, step, result, evidence, deviation. -->
+
+## Questions
+
+<!-- `- [ ] question`; answered as `- [x]` with the answer below. -->
 """
