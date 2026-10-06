@@ -107,6 +107,9 @@ Executor:
 3. When a question would change a Decision, Acceptance, or Out of scope, add
    it under Questions as `- [ ] ...`, set `status: blocked`, and stop.
 4. When every Acceptance item is met, set `status: done`.
+5. Whenever you are resumed ("continue", a new message, a new session), re-read
+   the handoff file first: the planner may have answered a question or changed
+   the Design there. Do not rely on your conversation memory of the file.
 
 Planner:
 
