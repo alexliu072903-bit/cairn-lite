@@ -15,7 +15,6 @@ from cairn_lite.cli import (
     handoff_write,
     init_project,
     main,
-    status_project,
     validate_project,
 )
 from cairn_lite.templates import END_MARKER, START_MARKER
@@ -110,66 +109,46 @@ class ValidationTests(unittest.TestCase):
                 )
             )
 
-    def test_boolean_log_limit_is_rejected(self) -> None:
+    def test_init_creates_no_project_notes(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            init_project(directory)
+
+            self.assertFalse((root / "cairn/LOG.md").exists())
+            self.assertFalse((root / "cairn/topics").exists())
+            agents = (root / "AGENTS.md").read_text(encoding="utf-8")
+            self.assertIn("cairn handoff status", agents)
+            self.assertNotIn("LOG.md", agents)
+            self.assertNotIn("topic", agents)
+
+    def test_projects_from_earlier_versions_still_validate(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             init_project(directory)
             config_path = root / ".cairn/config.json"
             config = json.loads(config_path.read_text(encoding="utf-8"))
-            config["latest_log_entries"] = True
+            config.update({"version": 1, "latest_log_entries": 5})
             config_path.write_text(json.dumps(config), encoding="utf-8")
+            (root / "cairn/topics").mkdir(parents=True)
+            (root / "cairn/topics/old.md").write_text("# Old\n", encoding="utf-8")
+            (root / "cairn/LOG.md").write_text("# Cairn log\n", encoding="utf-8")
 
             result = validate_project(directory)
 
-            self.assertFalse(result["ok"])
-            self.assertIn(
-                "latest_log_entries must be a positive integer",
-                result["errors"],
-            )
+            self.assertTrue(result["ok"], result["errors"])
 
-    def test_status_reads_topics_and_recent_log(self) -> None:
+    def test_status_lists_handoffs(self) -> None:
+        from cairn_lite.cli import handoff_new
+
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
             init_project(directory)
-            (root / "cairn/topics/example.md").write_text(
-                """\
----
-status: validated
-updated: 2026-07-31
----
+            handoff_new(directory, "site-v1", "Site v1", "claude", "codex")
+            output = io.StringIO()
+            with redirect_stdout(output):
+                exit_code = main(["status", directory])
 
-# Example
-
-## Current judgment
-Done.
-
-## Evidence
-Test.
-
-## Boundaries
-Local only.
-
-## Evolution
-Created.
-
-## Sources
-Test.
-
-## Validation log
-Passed.
-""",
-                encoding="utf-8",
-            )
-            (root / "cairn/LOG.md").write_text(
-                "# Cairn log\n\n## 2026-07-31 — Example\n\n- See topic.\n",
-                encoding="utf-8",
-            )
-
-            result = status_project(directory)
-
-            self.assertEqual(result["entries"][0]["title"], "2026-07-31 — Example")
-            self.assertEqual(result["topics"][0]["status"], "validated")
-            self.assertTrue(validate_project(directory)["ok"])
+            self.assertEqual(exit_code, 0)
+            self.assertIn("open: site-v1 (claude -> codex)", output.getvalue())
 
 
 class HandoffTests(unittest.TestCase):

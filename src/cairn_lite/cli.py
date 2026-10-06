@@ -7,7 +7,7 @@ import secrets
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Optional, Sequence
 
 from . import __version__
 from .templates import (
@@ -17,30 +17,18 @@ from .templates import (
     HANDOFF_HEADINGS,
     HANDOFF_STATUSES,
     HANDOFF_TEMPLATE,
-    LOG,
     PROTOCOL,
     START_MARKER,
-    TOPICS_README,
 )
 
 
 CONFIG_PATH = Path(".cairn/config.json")
 PROTOCOL_PATH = Path(".cairn/PROTOCOL.md")
-LOG_PATH = Path("cairn/LOG.md")
-TOPICS_PATH = Path("cairn/topics")
 HANDOFF_PATH = Path(".cairn/handoff-test.json")
 HANDOFFS_PATH = Path("cairn/handoffs")
 HANDOFFS_IGNORE = "cairn/handoffs/"
 HANDOFF_ID = re.compile(r"^[a-z0-9][a-z0-9-]*$")
-TOPIC_HEADINGS = (
-    "Current judgment",
-    "Evidence",
-    "Boundaries",
-    "Evolution",
-    "Sources",
-    "Validation log",
-)
-TOPIC_STATUSES = {"hypothesis", "validated", "invalidated"}
+CONFIG_VERSIONS = (1, 2)
 
 
 class CairnError(RuntimeError):
@@ -135,8 +123,6 @@ def init_project(path: str, dry_run: bool = False) -> List[str]:
     actions = [
         _write_new(root / PROTOCOL_PATH, PROTOCOL, dry_run),
         _write_new(root / CONFIG_PATH, CONFIG, dry_run),
-        _write_new(root / LOG_PATH, LOG, dry_run),
-        _write_new(root / TOPICS_PATH / "README.md", TOPICS_README, dry_run),
         _ensure_agents(root / "AGENTS.md", dry_run),
         _ensure_claude(root / "CLAUDE.md", dry_run),
         _ensure_gitignore(root / ".gitignore", dry_run),
@@ -169,18 +155,6 @@ def _frontmatter(text: str) -> Dict[str, str]:
             key, value = line.split(":", 1)
             result[key.strip()] = value.strip()
     return result
-
-
-def _log_blocks(text: str) -> List[Tuple[str, List[str], str]]:
-    matches = list(re.finditer(r"(?m)^## (.+)$", text))
-    blocks: List[Tuple[str, List[str], str]] = []
-    for index, match in enumerate(matches):
-        end = matches[index + 1].start() if index + 1 < len(matches) else len(text)
-        body = text[match.end() : end]
-        non_empty = [line for line in body.splitlines() if line.strip()]
-        rendered = text[match.start() : end].strip()
-        blocks.append((match.group(1).strip(), non_empty, rendered))
-    return blocks
 
 
 def _sections(text: str) -> Dict[str, str]:
@@ -310,8 +284,6 @@ def validate_project(path: str) -> Dict[str, Any]:
     required = (
         PROTOCOL_PATH,
         CONFIG_PATH,
-        LOG_PATH,
-        TOPICS_PATH / "README.md",
         Path("AGENTS.md"),
         Path("CLAUDE.md"),
     )
@@ -326,11 +298,8 @@ def validate_project(path: str) -> Dict[str, Any]:
         except CairnError as exc:
             errors.append(str(exc))
         else:
-            if config.get("version") != 1:
-                errors.append("config version must be 1")
-            latest_entries = config.get("latest_log_entries")
-            if type(latest_entries) is not int or latest_entries < 1:
-                errors.append("latest_log_entries must be a positive integer")
+            if config.get("version") not in CONFIG_VERSIONS:
+                errors.append("config version must be 1 or 2")
             if config.get("external_writes_require_confirmation") is not True:
                 errors.append(
                     "external_writes_require_confirmation must be true"
@@ -352,42 +321,6 @@ def validate_project(path: str) -> Dict[str, Any]:
         lines = claude_path.read_text(encoding="utf-8").splitlines()
         if not any(line.strip() == "@AGENTS.md" for line in lines):
             errors.append("CLAUDE.md must import @AGENTS.md")
-
-    log_path = root / LOG_PATH
-    if log_path.is_file():
-        for title, body_lines, _ in _log_blocks(
-            log_path.read_text(encoding="utf-8")
-        ):
-            if len(body_lines) > 6:
-                errors.append(
-                    f"LOG entry {title!r} has {len(body_lines)} body lines; max is 6"
-                )
-
-    topic_files = []
-    topics_dir = root / TOPICS_PATH
-    if topics_dir.is_dir():
-        topic_files = sorted(
-            item
-            for item in topics_dir.glob("*.md")
-            if item.name.lower() != "readme.md"
-        )
-
-    if not topic_files:
-        warnings.append("no topic files yet")
-
-    for topic in topic_files:
-        text = topic.read_text(encoding="utf-8")
-        metadata = _frontmatter(text)
-        status = metadata.get("status")
-        if status not in TOPIC_STATUSES:
-            errors.append(
-                f"{topic.relative_to(root)} has invalid or missing status"
-            )
-        for heading in TOPIC_HEADINGS:
-            if f"## {heading}" not in text:
-                errors.append(
-                    f"{topic.relative_to(root)} is missing `## {heading}`"
-                )
 
     handoff_files = _handoff_files(root)
     for item in handoff_files:
@@ -411,45 +344,8 @@ def validate_project(path: str) -> Dict[str, Any]:
         "root": str(root),
         "errors": errors,
         "warnings": warnings,
-        "topic_count": len(topic_files),
         "handoff_count": len(handoff_files),
     }
-
-
-def status_project(path: str) -> Dict[str, Any]:
-    root = _root(path)
-    config = _load_config(root)
-    limit = config.get("latest_log_entries", 5)
-    if not isinstance(limit, int) or limit < 1:
-        raise CairnError("latest_log_entries must be a positive integer")
-
-    log_path = root / LOG_PATH
-    if not log_path.is_file():
-        raise CairnError(f"missing {log_path}; run `cairn init` first")
-
-    entries = [
-        {"title": title, "body": body}
-        for title, _, body in _log_blocks(log_path.read_text(encoding="utf-8"))[
-            :limit
-        ]
-    ]
-
-    topics = []
-    topics_dir = root / TOPICS_PATH
-    if topics_dir.is_dir():
-        for topic in sorted(topics_dir.glob("*.md")):
-            if topic.name.lower() == "readme.md":
-                continue
-            metadata = _frontmatter(topic.read_text(encoding="utf-8"))
-            topics.append(
-                {
-                    "file": str(topic.relative_to(root)),
-                    "status": metadata.get("status", "unknown"),
-                    "updated": metadata.get("updated", "unknown"),
-                }
-            )
-
-    return {"root": str(root), "entries": entries, "topics": topics}
 
 
 def _write_json_atomic(path: Path, data: Dict[str, Any]) -> None:
@@ -539,7 +435,6 @@ def _print_validation(result: Dict[str, Any]) -> None:
         print(f"error: {error}")
     for warning in result["warnings"]:
         print(f"warning: {warning}")
-    print(f"topics: {result['topic_count']}")
     print(f"handoffs: {result['handoff_count']}")
 
 
@@ -557,29 +452,10 @@ def _print_handoffs(result: Dict[str, Any]) -> None:
             print(f"  planner_url: {item['planner_url']}")
 
 
-def _print_status(result: Dict[str, Any]) -> None:
-    print(result["root"])
-    print("\nRecent changes:")
-    if result["entries"]:
-        for entry in result["entries"]:
-            print(f"- {entry['title']}")
-    else:
-        print("- none")
-    print("\nTopics:")
-    if result["topics"]:
-        for topic in result["topics"]:
-            print(
-                f"- {topic['status']}: {topic['file']} "
-                f"(updated {topic['updated']})"
-            )
-    else:
-        print("- none")
-
-
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="cairn",
-        description="Portable project context for handoffs across AI agents.",
+        description="Pass work between AI agents through one shared handoff file.",
     )
     parser.add_argument("--version", action="version", version=__version__)
     commands = parser.add_subparsers(dest="command", required=True)
@@ -597,7 +473,7 @@ def build_parser() -> argparse.ArgumentParser:
     validate_parser.add_argument("--json", action="store_true")
 
     status_parser = commands.add_parser(
-        "status", help="show recent changes and topic states"
+        "status", help="same as `cairn handoff status`"
     )
     status_parser.add_argument("path", nargs="?", default=".")
     status_parser.add_argument("--json", action="store_true")
@@ -671,11 +547,11 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             return 0 if result["ok"] else 1
 
         if args.command == "status":
-            result = status_project(args.path)
+            result = handoff_status(args.path)
             if args.json:
                 print(json.dumps(result, indent=2, ensure_ascii=False))
             else:
-                _print_status(result)
+                _print_handoffs(result)
             return 0
 
         if args.command == "handoff":

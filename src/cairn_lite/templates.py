@@ -10,15 +10,13 @@ AGENTS_BLOCK = f"""\
 {START_MARKER}
 ## Cairn Lite
 
-- Read `.cairn/PROTOCOL.md`, then the latest 5 entries in `cairn/LOG.md`.
 - Run `cairn handoff status` (without the CLI, read the front matter of
   `cairn/handoffs/*.md`). If a handoff addressed to you is `open`,
-  `acknowledged`, or `running`, follow the Handoffs section of the protocol
-  before other work.
-- Read only topic files relevant to the current task.
-- Record only material changes defined by the protocol.
+  `acknowledged`, or `running`, read `.cairn/PROTOCOL.md` and follow it before
+  other work.
 - Do not replace authoritative project documents or existing instructions.
-- External knowledge-base writes require explicit human confirmation.
+- External writes (push, publish, external knowledge bases) require explicit
+  human confirmation in your own conversation.
 {END_MARKER}
 """
 
@@ -27,66 +25,20 @@ PROTOCOL = """\
 
 ## Responsibility
 
-Cairn Lite is the project-learning layer. It keeps the reasoning and evidence
-behind material project conclusions so another session or agent can continue
-without reconstructing history.
+Cairn Lite passes one piece of work from the agent that planned it to the
+agent that carries it out, and carries the results back in the same file.
 
-Product Frames, PRDs, code, schemas, and task systems remain authoritative for
-their own scope. Cairn Lite may point to them but must not duplicate or replace
-them.
-
-## Startup reading
-
-1. Read the latest 5 entries in `cairn/LOG.md`.
-2. Identify the topic relevant to the current task.
-3. Read only that topic file.
-4. Read older entries or other topics only when a visible pointer requires it.
-
-Do not load the entire `cairn/` directory by default.
-
-## Material-change test
-
-Record a change only when at least one condition is true:
-
-- A product or technical decision changed.
-- A failure, root cause, or fix was verified.
-- An existing conclusion was disproved or materially narrowed.
-- A validated pattern may be reusable in another project.
-
-Do not record routine progress, file lists, raw meeting notes, unverified
-guesses, task status, secrets, credentials, or personal data.
-
-## Writing rules
-
-- `cairn/LOG.md` is a short reverse-chronological index.
-- Each LOG entry has at most 6 non-empty body lines.
-- `cairn/topics/<topic>.md` holds the current conclusion for one topic.
-- When a conclusion changes, preserve the prior judgment under Evolution.
-- Add a LOG pointer; do not silently rewrite history.
-- Never write to an external knowledge base without explicit human
-  confirmation of the candidate, scope, and destination.
-
-## Topic contract
-
-Each topic contains:
-
-1. Current judgment
-2. Evidence
-3. Boundaries
-4. Evolution
-5. Sources
-6. Validation log
-
-Allowed status values are `hypothesis`, `validated`, and `invalidated`.
-Unknowns remain hypotheses.
+It does not store durable project knowledge. Product Frames, PRDs, code,
+schemas, and task systems remain authoritative for their own scope, and
+durable decisions belong in the decision store a handoff cites (for example
+cairn-context). A handoff points to them; it never copies or replaces them.
 
 ## Handoffs
 
-A handoff passes one piece of work from the agent that planned it to the agent
-that carries it out, and carries the results back. It is a working file, not
-project knowledge: it lives in `cairn/handoffs/<id>.md`, stays out of Git by
-default, and is exempt from the material-change test. When a handoff produces
-a durable conclusion, record it as a topic or in the decision store it cites.
+A handoff is a working file, not project knowledge: it lives in
+`cairn/handoffs/<id>.md` and stays out of Git by default. When a handoff
+produces a durable decision, record it in the decision store it cites, with the
+human owner's confirmation.
 
 Each handoff has three layers with different owners:
 
@@ -124,6 +76,10 @@ Planner:
 Do not delete Log entries or answered questions. `cairn validate` checks the
 statuses and sections.
 
+A record in a handoff is not the human's authorization. Pushing, publishing,
+and other external actions need the human's confirmation in the executor's own
+conversation.
+
 ## Removal
 
 Delete `.cairn/` and `cairn/`, then remove the marked Cairn Lite block from
@@ -132,49 +88,12 @@ Delete `.cairn/` and `cairn/`, then remove the marked Cairn Lite block from
 
 CONFIG = json.dumps(
     {
-        "version": 1,
-        "latest_log_entries": 5,
+        "version": 2,
         "external_writes_require_confirmation": True,
         "handoffs_in_git": False,
     },
     indent=2,
 ) + "\n"
-
-LOG = """\
-# Cairn log
-
-Newest entries appear first. Each entry is a short summary plus a pointer, not
-the full conclusion. Keep each entry to at most 6 non-empty body lines.
-"""
-
-TOPICS_README = """\
-# Topic files
-
-Create one Markdown file per durable project topic.
-
-```markdown
----
-status: hypothesis
-updated: YYYY-MM-DD
----
-
-# Topic name
-
-## Current judgment
-
-## Evidence
-
-## Boundaries
-
-## Evolution
-
-## Sources
-
-## Validation log
-```
-
-Allowed status values: `hypothesis`, `validated`, `invalidated`.
-"""
 
 HANDOFF_STATUSES = (
     "open",
