@@ -195,10 +195,3 @@ can verify the directory, not which AI product issued the command.
 ## License
 
 [MIT](LICENSE)
-
-## Acknowledgements
-
-Cairn Lite was inspired by
-[iBlinkQ/project-cairn](https://github.com/iBlinkQ/project-cairn). This
-implementation was rewritten around a smaller, local-first, agent-neutral
-protocol and does not copy code from the original project.
