@@ -335,6 +335,7 @@ class HandoffFileTests(unittest.TestCase):
                     [
                         "handoff", "new", "site-v1", "--title", "Site v1",
                         "--from", "claude", "--to", "codex", "--path", directory,
+                        "--planner-url", "https://claude.ai/code/project/demo",
                     ]
                 )
             self.assertEqual(code, 0)
@@ -343,6 +344,10 @@ class HandoffFileTests(unittest.TestCase):
                 code = main(["handoff", "status", directory])
             self.assertEqual(code, 0)
             self.assertIn("open: site-v1 (claude -> codex)", output.getvalue())
+            self.assertIn(
+                "planner_url: https://claude.ai/code/project/demo",
+                output.getvalue(),
+            )
 
 
 if __name__ == "__main__":

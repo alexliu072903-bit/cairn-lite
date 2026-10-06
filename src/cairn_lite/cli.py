@@ -553,6 +553,8 @@ def _print_handoffs(result: Dict[str, Any]) -> None:
             line += f", {item['open_questions']} open question(s)"
         print(line)
         print(f"  {item['file']}")
+        if item["planner_url"]:
+            print(f"  planner_url: {item['planner_url']}")
 
 
 def _print_status(result: Dict[str, Any]) -> None:
