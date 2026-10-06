@@ -11,6 +11,10 @@ AGENTS_BLOCK = f"""\
 ## Cairn Lite
 
 - Read `.cairn/PROTOCOL.md`, then the latest 5 entries in `cairn/LOG.md`.
+- Run `cairn handoff status` (without the CLI, read the front matter of
+  `cairn/handoffs/*.md`). If a handoff addressed to you is `open`,
+  `acknowledged`, or `running`, follow the Handoffs section of the protocol
+  before other work.
 - Read only topic files relevant to the current task.
 - Record only material changes defined by the protocol.
 - Do not replace authoritative project documents or existing instructions.
@@ -76,6 +80,45 @@ Each topic contains:
 Allowed status values are `hypothesis`, `validated`, and `invalidated`.
 Unknowns remain hypotheses.
 
+## Handoffs
+
+A handoff passes one piece of work from the agent that planned it to the agent
+that carries it out, and carries the results back. It is a working file, not
+project knowledge: it lives in `cairn/handoffs/<id>.md`, stays out of Git by
+default, and is exempt from the material-change test. When a handoff produces
+a durable conclusion, record it as a topic or in the decision store it cites.
+
+Each handoff has three layers with different owners:
+
+- **Decisions**: pointers to confirmed decisions (a decision id or a file
+  path), never copies. Nobody changes them inside a handoff.
+- **Design**: the planner's proposal, a hypothesis. The executor may change
+  it, and records what changed and why in the Log.
+- **Acceptance** and **Out of scope**: only the human owner changes them.
+
+Executor:
+
+1. Before any other work, write the Readback: the goal, what is out of scope,
+   and where you will stop, in your own words, at most 6 lines. Set
+   `status: acknowledged`.
+2. Set `status: running` and work. After each step, append one Log entry:
+   date, step, result, evidence (commit, PR, file, command output), and any
+   deviation from the Design.
+3. When a question would change a Decision, Acceptance, or Out of scope, add
+   it under Questions as `- [ ] ...`, set `status: blocked`, and stop.
+4. When every Acceptance item is met, set `status: done`.
+
+Planner:
+
+1. Write the handoff with `cairn handoff new`. Keep it short: point to
+   decisions and sources instead of repeating them.
+2. On re-entry, read the Readback, Log, and Questions before planning again.
+   Answer a question by changing `- [ ]` to `- [x]` and writing the answer
+   under it; ask the human owner when the answer is theirs to give.
+
+Do not delete Log entries or answered questions. `cairn validate` checks the
+statuses and sections.
+
 ## Removal
 
 Delete `.cairn/` and `cairn/`, then remove the marked Cairn Lite block from
@@ -87,6 +130,7 @@ CONFIG = json.dumps(
         "version": 1,
         "latest_log_entries": 5,
         "external_writes_require_confirmation": True,
+        "handoffs_in_git": False,
     },
     indent=2,
 ) + "\n"
@@ -125,4 +169,67 @@ updated: YYYY-MM-DD
 ```
 
 Allowed status values: `hypothesis`, `validated`, `invalidated`.
+"""
+
+HANDOFF_STATUSES = (
+    "open",
+    "acknowledged",
+    "running",
+    "blocked",
+    "done",
+    "cancelled",
+)
+
+HANDOFF_HEADINGS = (
+    "Goal",
+    "Decisions",
+    "Design",
+    "Acceptance",
+    "Out of scope",
+    "Readback",
+    "Log",
+    "Questions",
+)
+
+HANDOFF_TEMPLATE = """\
+---
+handoff: {id}
+status: open
+from: {from_agent}
+to: {to_agent}
+created: {date}
+---
+
+# {title}
+
+## Goal
+
+<!-- One paragraph: what the human owner wants when this is done. -->
+
+## Decisions
+
+<!-- Pointers only, never copies, e.g. `cairn-context: my-project/v1-scope`
+or a file path. The executor does not change these. -->
+
+## Design
+
+<!-- Hypothesis. The executor may change it and records why in the Log. -->
+
+## Acceptance
+
+<!-- Checkable items. Only the human owner changes them. -->
+
+## Out of scope
+
+## Readback
+
+<!-- Executor, before any other work: goal, out of scope, stop point. -->
+
+## Log
+
+<!-- Executor appends: date, step, result, evidence, deviation. -->
+
+## Questions
+
+<!-- `- [ ] question`; answered as `- [x]` with the answer below. -->
 """

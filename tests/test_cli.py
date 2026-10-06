@@ -219,5 +219,103 @@ class HandoffTests(unittest.TestCase):
             self.assertIn(state["code"], output.getvalue())
 
 
+class HandoffFileTests(unittest.TestCase):
+    def _new(self, directory: str) -> Path:
+        from cairn_lite.cli import handoff_new
+
+        init_project(directory)
+        return handoff_new(directory, "site-v1", "Site v1", "claude", "codex")
+
+    def _set(self, path: Path, old: str, new: str) -> None:
+        text = path.read_text(encoding="utf-8")
+        self.assertIn(old, text)
+        path.write_text(text.replace(old, new, 1), encoding="utf-8")
+
+    def test_init_keeps_handoffs_out_of_git(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / ".gitignore").write_text("node_modules/", encoding="utf-8")
+            init_project(directory)
+            init_project(directory)
+            ignore = (root / ".gitignore").read_text(encoding="utf-8")
+            self.assertEqual(ignore, "node_modules/\ncairn/handoffs/\n")
+
+    def test_new_handoff_is_valid_and_listed(self) -> None:
+        from cairn_lite.cli import handoff_new, handoff_status
+
+        with tempfile.TemporaryDirectory() as directory:
+            self._new(directory)
+            result = validate_project(directory)
+            self.assertTrue(result["ok"], result["errors"])
+            self.assertEqual(result["handoff_count"], 1)
+            [item] = handoff_status(directory)["handoffs"]
+            self.assertEqual(
+                (item["id"], item["status"], item["to"]),
+                ("site-v1", "open", "codex"),
+            )
+            with self.assertRaises(CairnError):
+                handoff_new(directory, "site-v1", "Again", "claude", "codex")
+            with self.assertRaises(CairnError):
+                handoff_new(directory, "Bad Id", "Bad", "claude", "codex")
+
+    def test_acknowledged_requires_readback(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = self._new(directory)
+            self._set(path, "status: open", "status: acknowledged")
+            errors = validate_project(directory)["errors"]
+            self.assertTrue(any("no Readback" in error for error in errors))
+
+            self._set(path, "## Log", "Build the site; stop at the PR.\n\n## Log")
+            self.assertTrue(validate_project(directory)["ok"])
+
+    def test_blocked_and_open_questions_must_agree(self) -> None:
+        from cairn_lite.cli import handoff_status
+
+        with tempfile.TemporaryDirectory() as directory:
+            path = self._new(directory)
+            self._set(path, "## Log", "Goal understood.\n\n## Log")
+            self._set(path, "status: open", "status: blocked")
+            errors = validate_project(directory)["errors"]
+            self.assertTrue(any("no open question" in error for error in errors))
+
+            path.write_text(
+                path.read_text(encoding="utf-8") + "\n- [ ] Keep Writing?\n",
+                encoding="utf-8",
+            )
+            self.assertTrue(validate_project(directory)["ok"])
+            [item] = handoff_status(directory)["handoffs"]
+            self.assertEqual(item["open_questions"], 1)
+
+            self._set(path, "status: blocked", "status: running")
+            errors = validate_project(directory)["errors"]
+            self.assertTrue(any("open questions" in error for error in errors))
+
+    def test_done_requires_log(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = self._new(directory)
+            self._set(path, "## Log", "Goal understood.\n\n## Log")
+            self._set(path, "status: open", "status: done")
+            errors = validate_project(directory)["errors"]
+            self.assertTrue(any("no Log entry" in error for error in errors))
+
+    def test_cli_handoff_commands(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            init_project(directory)
+            output = io.StringIO()
+            with redirect_stdout(output):
+                code = main(
+                    [
+                        "handoff", "new", "site-v1", "--title", "Site v1",
+                        "--from", "claude", "--to", "codex", "--path", directory,
+                    ]
+                )
+            self.assertEqual(code, 0)
+            output = io.StringIO()
+            with redirect_stdout(output):
+                code = main(["handoff", "status", directory])
+            self.assertEqual(code, 0)
+            self.assertIn("open: site-v1 (claude -> codex)", output.getvalue())
+
+
 if __name__ == "__main__":
     unittest.main()

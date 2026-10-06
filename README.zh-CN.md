@@ -109,11 +109,39 @@ Product Frame、PRD、代码、Schema 和任务系统继续作为各自范围内
 | `cairn init [path]` | 在不覆盖已有文件的情况下接入协议 |
 | `cairn validate [path]` | 检查目录结构、配置、topic 和日志限制 |
 | `cairn status [path]` | 查看最近变化和 topic 状态 |
+| `cairn handoff new ID --title T --from A --to B` | 为另一个 Agent 创建交接单 |
+| `cairn handoff status [path]` | 列出交接单、状态和未回答的问题 |
 | `cairn test write --agent NAME [path]` | 写入一个不显示在终端中的交接验证码 |
 | `cairn test read --agent NAME [path]` | 由另一个 Agent 读取并验证验证码 |
 | `cairn test clean [path]` | 删除临时验证码 |
 
 所有命令都支持 `--help`。`validate` 和 `status` 还支持 `--json`。
+
+## 交接单
+
+交接单把一件工作从做计划的 Agent 交给执行的 Agent，执行结果也写回同一个文件。
+它替代的是「写一份长交接文档 → 把提示词贴给另一个 Agent → 再手动转述进度和问题」
+这种做法。
+
+```bash
+cairn handoff new site-v1 --title "个人网站 Skill v1" --from claude --to codex
+```
+
+这会创建 `cairn/handoffs/site-v1.md`。`cairn init` 会把 `cairn/handoffs/` 加进
+`.gitignore`，因为交接单经常带有本机路径和私有信息。
+
+| 部分 | 谁负责 | 规则 |
+|---|---|---|
+| Decisions | 人 | 只引用已确认的决定，不复制 |
+| Design | 计划方 | 是假设；执行方可以改，但要在 Log 里写明原因 |
+| Acceptance、Out of scope | 人 | 只有负责人能改 |
+| Readback | 执行方 | 开工前先写：目标、不做什么、停在哪 |
+| Log | 执行方 | 每完成一步追加一条，带证据 |
+| Questions | 执行方 | 会改变决定的问题；写下后设为 `blocked` 并停下 |
+
+`AGENTS.md` 里的规则区块会让每个 Agent 进入项目时先运行 `cairn handoff status`，
+执行方不用粘贴提示词也能找到自己的工作。`cairn validate` 检查状态和内容是否一致：
+acknowledged 必须有 Readback，blocked 必须有未回答的问题，done 必须有 Log。
 
 ## 跨 Agent 测试
 

@@ -111,11 +111,41 @@ supports it; it does not replace the source of truth.
 | `cairn init [path]` | Add the protocol without overwriting existing files |
 | `cairn validate [path]` | Check structure, config, topics, and log limits |
 | `cairn status [path]` | Show recent changes and topic states |
+| `cairn handoff new ID --title T --from A --to B` | Create a handoff for another agent |
+| `cairn handoff status [path]` | List handoffs, their status, and open questions |
 | `cairn test write --agent NAME [path]` | Write a hidden handoff challenge |
 | `cairn test read --agent NAME [path]` | Read and verify the challenge from another agent |
 | `cairn test clean [path]` | Remove the temporary challenge |
 
 All commands support `--help`. `validate` and `status` also support `--json`.
+
+## Handoffs
+
+A handoff passes one piece of work from the agent that planned it to the agent
+that carries it out, and brings the results back in the same file. It replaces
+the pattern of writing a long handoff document, pasting a prompt into another
+agent, and relaying its progress and questions by hand.
+
+```bash
+cairn handoff new site-v1 --title "Personal site Skill v1" --from claude --to codex
+```
+
+This creates `cairn/handoffs/site-v1.md`. `cairn init` adds `cairn/handoffs/`
+to `.gitignore`, because handoffs often hold local paths and private context.
+
+| Section | Owner | Rule |
+|---|---|---|
+| Decisions | human | Pointers to confirmed decisions, never copies |
+| Design | planner | A hypothesis; the executor may change it and logs why |
+| Acceptance, Out of scope | human | Only the owner changes them |
+| Readback | executor | Goal, out of scope, and stop point, written before any work |
+| Log | executor | Appended after each step, with evidence |
+| Questions | executor | Anything that would change a decision; sets `status: blocked` and stops |
+
+The `AGENTS.md` block tells every agent to run `cairn handoff status` on
+entry, so the executor finds its work without a pasted prompt. `cairn validate`
+checks that statuses and sections agree: an acknowledged handoff has a
+Readback, a blocked one has an open question, a done one has a Log.
 
 ## Cross-agent test
 

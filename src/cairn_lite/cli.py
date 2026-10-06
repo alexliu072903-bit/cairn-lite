@@ -14,6 +14,9 @@ from .templates import (
     AGENTS_BLOCK,
     CONFIG,
     END_MARKER,
+    HANDOFF_HEADINGS,
+    HANDOFF_STATUSES,
+    HANDOFF_TEMPLATE,
     LOG,
     PROTOCOL,
     START_MARKER,
@@ -26,6 +29,9 @@ PROTOCOL_PATH = Path(".cairn/PROTOCOL.md")
 LOG_PATH = Path("cairn/LOG.md")
 TOPICS_PATH = Path("cairn/topics")
 HANDOFF_PATH = Path(".cairn/handoff-test.json")
+HANDOFFS_PATH = Path("cairn/handoffs")
+HANDOFFS_IGNORE = "cairn/handoffs/"
+HANDOFF_ID = re.compile(r"^[a-z0-9][a-z0-9-]*$")
 TOPIC_HEADINGS = (
     "Current judgment",
     "Evidence",
@@ -102,6 +108,20 @@ def _ensure_claude(path: Path, dry_run: bool) -> str:
     return f"append {path}"
 
 
+def _ensure_gitignore(path: Path, dry_run: bool) -> str:
+    if not path.exists():
+        return _write_new(path, HANDOFFS_IGNORE + "\n", dry_run)
+
+    text = path.read_text(encoding="utf-8")
+    if any(line.strip() == HANDOFFS_IGNORE for line in text.splitlines()):
+        return f"skip   {path}"
+
+    if not dry_run:
+        separator = "" if not text or text.endswith("\n") else "\n"
+        path.write_text(text + separator + HANDOFFS_IGNORE + "\n", encoding="utf-8")
+    return f"append {path}"
+
+
 def init_project(path: str, dry_run: bool = False) -> List[str]:
     root = _root(path)
     if root.exists() and not root.is_dir():
@@ -119,6 +139,7 @@ def init_project(path: str, dry_run: bool = False) -> List[str]:
         _write_new(root / TOPICS_PATH / "README.md", TOPICS_README, dry_run),
         _ensure_agents(root / "AGENTS.md", dry_run),
         _ensure_claude(root / "CLAUDE.md", dry_run),
+        _ensure_gitignore(root / ".gitignore", dry_run),
     ]
     return actions
 
@@ -160,6 +181,112 @@ def _log_blocks(text: str) -> List[Tuple[str, List[str], str]]:
         rendered = text[match.start() : end].strip()
         blocks.append((match.group(1).strip(), non_empty, rendered))
     return blocks
+
+
+def _sections(text: str) -> Dict[str, str]:
+    matches = list(re.finditer(r"(?m)^## (.+)$", text))
+    result: Dict[str, str] = {}
+    for index, match in enumerate(matches):
+        end = matches[index + 1].start() if index + 1 < len(matches) else len(text)
+        body = re.sub(r"<!--.*?-->", "", text[match.end() : end], flags=re.S)
+        result[match.group(1).strip()] = body.strip()
+    return result
+
+
+def _handoff_files(root: Path) -> List[Path]:
+    directory = root / HANDOFFS_PATH
+    if not directory.is_dir():
+        return []
+    return sorted(directory.glob("*.md"))
+
+
+def _read_handoff(path: Path) -> Dict[str, Any]:
+    text = path.read_text(encoding="utf-8")
+    metadata = _frontmatter(text)
+    sections = _sections(text)
+    questions = sections.get("Questions", "")
+    return {
+        "id": metadata.get("handoff", path.stem),
+        "status": metadata.get("status", "unknown"),
+        "from": metadata.get("from", "unknown"),
+        "to": metadata.get("to", "unknown"),
+        "open_questions": len(re.findall(r"(?m)^\s*- \[ \]", questions)),
+        "metadata": metadata,
+        "sections": sections,
+    }
+
+
+def _check_handoff(root: Path, path: Path) -> List[str]:
+    name = str(path.relative_to(root))
+    handoff = _read_handoff(path)
+    metadata, sections = handoff["metadata"], handoff["sections"]
+    status = handoff["status"]
+    errors = []
+
+    if metadata.get("handoff") != path.stem:
+        errors.append(f"{name}: `handoff` must match the file name")
+    if status not in HANDOFF_STATUSES:
+        errors.append(f"{name} has invalid or missing status")
+    for key in ("from", "to"):
+        if not metadata.get(key):
+            errors.append(f"{name} is missing `{key}`")
+    for heading in HANDOFF_HEADINGS:
+        if heading not in sections:
+            errors.append(f"{name} is missing `## {heading}`")
+
+    if status not in ("open", "cancelled") and not sections.get("Readback"):
+        errors.append(f"{name} is {status} but has no Readback")
+    if status == "blocked" and not handoff["open_questions"]:
+        errors.append(f"{name} is blocked but has no open question")
+    if status in ("running", "done") and handoff["open_questions"]:
+        errors.append(
+            f"{name} has open questions; set status to blocked or answer them"
+        )
+    if status == "done" and not sections.get("Log"):
+        errors.append(f"{name} is done but has no Log entry")
+    return errors
+
+
+def handoff_new(
+    path: str, handoff_id: str, title: str, from_agent: str, to_agent: str
+) -> Path:
+    root = _root(path)
+    _load_config(root)
+    if not HANDOFF_ID.match(handoff_id):
+        raise CairnError("handoff id must use lowercase letters, digits, and -")
+    target = root / HANDOFFS_PATH / f"{handoff_id}.md"
+    if target.exists():
+        raise CairnError(f"{target} already exists")
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(
+        HANDOFF_TEMPLATE.format(
+            id=handoff_id,
+            title=title,
+            from_agent=from_agent,
+            to_agent=to_agent,
+            date=datetime.now(timezone.utc).date().isoformat(),
+        ),
+        encoding="utf-8",
+    )
+    return target
+
+
+def handoff_status(path: str) -> Dict[str, Any]:
+    root = _root(path)
+    handoffs = []
+    for item in _handoff_files(root):
+        handoff = _read_handoff(item)
+        handoffs.append(
+            {
+                "file": str(item.relative_to(root)),
+                "id": handoff["id"],
+                "status": handoff["status"],
+                "from": handoff["from"],
+                "to": handoff["to"],
+                "open_questions": handoff["open_questions"],
+            }
+        )
+    return {"root": str(root), "handoffs": handoffs}
 
 
 def validate_project(path: str) -> Dict[str, Any]:
@@ -249,12 +376,30 @@ def validate_project(path: str) -> Dict[str, Any]:
                     f"{topic.relative_to(root)} is missing `## {heading}`"
                 )
 
+    handoff_files = _handoff_files(root)
+    for item in handoff_files:
+        errors.extend(_check_handoff(root, item))
+    if handoff_files and config.get("handoffs_in_git") is not True:
+        ignored = any(
+            ignore.is_file()
+            and any(
+                line.strip() == HANDOFFS_IGNORE
+                for line in ignore.read_text(encoding="utf-8").splitlines()
+            )
+            for ignore in (root / ".gitignore", root / ".git/info/exclude")
+        )
+        if not ignored:
+            warnings.append(
+                f"{HANDOFFS_IGNORE} is not in .gitignore; handoffs may be committed"
+            )
+
     return {
         "ok": not errors,
         "root": str(root),
         "errors": errors,
         "warnings": warnings,
         "topic_count": len(topic_files),
+        "handoff_count": len(handoff_files),
     }
 
 
@@ -382,6 +527,19 @@ def _print_validation(result: Dict[str, Any]) -> None:
     for warning in result["warnings"]:
         print(f"warning: {warning}")
     print(f"topics: {result['topic_count']}")
+    print(f"handoffs: {result['handoff_count']}")
+
+
+def _print_handoffs(result: Dict[str, Any]) -> None:
+    if not result["handoffs"]:
+        print("No handoffs.")
+        return
+    for item in result["handoffs"]:
+        line = f"- {item['status']}: {item['id']} ({item['from']} -> {item['to']})"
+        if item["open_questions"]:
+            line += f", {item['open_questions']} open question(s)"
+        print(line)
+        print(f"  {item['file']}")
 
 
 def _print_status(result: Dict[str, Any]) -> None:
@@ -428,6 +586,26 @@ def build_parser() -> argparse.ArgumentParser:
     )
     status_parser.add_argument("path", nargs="?", default=".")
     status_parser.add_argument("--json", action="store_true")
+
+    handoff_parser = commands.add_parser(
+        "handoff", help="pass work between agents and carry results back"
+    )
+    handoff_commands = handoff_parser.add_subparsers(
+        dest="handoff_command", required=True
+    )
+
+    new_parser = handoff_commands.add_parser("new", help="create a handoff")
+    new_parser.add_argument("id")
+    new_parser.add_argument("--title", required=True)
+    new_parser.add_argument("--from", dest="from_agent", required=True)
+    new_parser.add_argument("--to", dest="to_agent", required=True)
+    new_parser.add_argument("--path", default=".")
+
+    list_parser = handoff_commands.add_parser(
+        "status", help="list handoffs, their status, and open questions"
+    )
+    list_parser.add_argument("path", nargs="?", default=".")
+    list_parser.add_argument("--json", action="store_true")
 
     test_parser = commands.add_parser(
         "test", help="run a blind cross-agent filesystem handoff test"
@@ -480,6 +658,24 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 print(json.dumps(result, indent=2, ensure_ascii=False))
             else:
                 _print_status(result)
+            return 0
+
+        if args.command == "handoff":
+            if args.handoff_command == "new":
+                target = handoff_new(
+                    args.path,
+                    args.id,
+                    args.title,
+                    args.from_agent,
+                    args.to_agent,
+                )
+                print(f"create {target}")
+                return 0
+            result = handoff_status(args.path)
+            if args.json:
+                print(json.dumps(result, indent=2, ensure_ascii=False))
+            else:
+                _print_handoffs(result)
             return 0
 
         if args.test_command == "write":
