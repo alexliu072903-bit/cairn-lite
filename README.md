@@ -111,7 +111,7 @@ supports it; it does not replace the source of truth.
 | `cairn init [path]` | Add the protocol without overwriting existing files |
 | `cairn validate [path]` | Check structure, config, topics, and log limits |
 | `cairn status [path]` | Show recent changes and topic states |
-| `cairn handoff new ID --title T --from A --to B` | Create a handoff for another agent |
+| `cairn handoff new ID --title T --from A --to B [--planner-url URL]` | Create a handoff for another agent |
 | `cairn handoff status [path]` | List handoffs, their status, and open questions |
 | `cairn test write --agent NAME [path]` | Write a hidden handoff challenge |
 | `cairn test read --agent NAME [path]` | Read and verify the challenge from another agent |
@@ -132,6 +132,10 @@ cairn handoff new site-v1 --title "Personal site Skill v1" --from claude --to co
 
 This creates `cairn/handoffs/site-v1.md`. `cairn init` adds `cairn/handoffs/`
 to `.gitignore`, because handoffs often hold local paths and private context.
+
+Add `--planner-url https://...` to record where the planner can be reached.
+Tools such as AirJelly use it to send the human back to the planner when the
+work needs re-planning. It is optional and must be an `https://` link.
 
 | Section | Owner | Rule |
 |---|---|---|

@@ -210,6 +210,7 @@ def _read_handoff(path: Path) -> Dict[str, Any]:
         "status": metadata.get("status", "unknown"),
         "from": metadata.get("from", "unknown"),
         "to": metadata.get("to", "unknown"),
+        "planner_url": metadata.get("planner_url") or None,
         "open_questions": len(re.findall(r"(?m)^\s*- \[ \]", questions)),
         "metadata": metadata,
         "sections": sections,
@@ -230,6 +231,9 @@ def _check_handoff(root: Path, path: Path) -> List[str]:
     for key in ("from", "to"):
         if not metadata.get(key):
             errors.append(f"{name} is missing `{key}`")
+    planner_url = metadata.get("planner_url")
+    if planner_url and not planner_url.startswith("https://"):
+        errors.append(f"{name}: `planner_url` must start with https://")
     for heading in HANDOFF_HEADINGS:
         if heading not in sections:
             errors.append(f"{name} is missing `## {heading}`")
@@ -248,12 +252,19 @@ def _check_handoff(root: Path, path: Path) -> List[str]:
 
 
 def handoff_new(
-    path: str, handoff_id: str, title: str, from_agent: str, to_agent: str
+    path: str,
+    handoff_id: str,
+    title: str,
+    from_agent: str,
+    to_agent: str,
+    planner_url: Optional[str] = None,
 ) -> Path:
     root = _root(path)
     _load_config(root)
     if not HANDOFF_ID.match(handoff_id):
         raise CairnError("handoff id must use lowercase letters, digits, and -")
+    if planner_url and not planner_url.startswith("https://"):
+        raise CairnError("planner_url must start with https://")
     target = root / HANDOFFS_PATH / f"{handoff_id}.md"
     if target.exists():
         raise CairnError(f"{target} already exists")
@@ -264,6 +275,7 @@ def handoff_new(
             title=title,
             from_agent=from_agent,
             to_agent=to_agent,
+            planner_line=f"planner_url: {planner_url}\n" if planner_url else "",
             date=datetime.now(timezone.utc).date().isoformat(),
         ),
         encoding="utf-8",
@@ -283,6 +295,7 @@ def handoff_status(path: str) -> Dict[str, Any]:
                 "status": handoff["status"],
                 "from": handoff["from"],
                 "to": handoff["to"],
+                "planner_url": handoff["planner_url"],
                 "open_questions": handoff["open_questions"],
             }
         )
@@ -599,6 +612,9 @@ def build_parser() -> argparse.ArgumentParser:
     new_parser.add_argument("--title", required=True)
     new_parser.add_argument("--from", dest="from_agent", required=True)
     new_parser.add_argument("--to", dest="to_agent", required=True)
+    new_parser.add_argument(
+        "--planner-url", help="https link where the planner can be reached"
+    )
     new_parser.add_argument("--path", default=".")
 
     list_parser = handoff_commands.add_parser(
@@ -668,6 +684,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                     args.title,
                     args.from_agent,
                     args.to_agent,
+                    args.planner_url,
                 )
                 print(f"create {target}")
                 return 0

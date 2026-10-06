@@ -258,6 +258,34 @@ class HandoffFileTests(unittest.TestCase):
             with self.assertRaises(CairnError):
                 handoff_new(directory, "Bad Id", "Bad", "claude", "codex")
 
+    def test_planner_url_is_optional_and_must_be_https(self) -> None:
+        from cairn_lite.cli import handoff_new, handoff_status
+
+        with tempfile.TemporaryDirectory() as directory:
+            init_project(directory)
+            url = "https://claude.ai/code/project/demo"
+            path = handoff_new(
+                directory, "with-url", "With URL", "claude", "codex", url
+            )
+            text = path.read_text(encoding="utf-8")
+            self.assertIn(f"planner_url: {url}\n", text)
+            handoff_new(directory, "no-url", "No URL", "claude", "codex")
+            urls = {
+                item["id"]: item["planner_url"]
+                for item in handoff_status(directory)["handoffs"]
+            }
+            self.assertEqual(urls, {"no-url": None, "with-url": url})
+            self.assertTrue(validate_project(directory)["ok"])
+
+            with self.assertRaises(CairnError):
+                handoff_new(
+                    directory, "bad-url", "Bad", "claude", "codex", "http://x"
+                )
+            self._set(path, url, "file:///Users/me/plan.md")
+            result = validate_project(directory)
+            self.assertFalse(result["ok"])
+            self.assertIn("`planner_url` must start with https://", result["errors"][0])
+
     def test_acknowledged_requires_readback(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             path = self._new(directory)

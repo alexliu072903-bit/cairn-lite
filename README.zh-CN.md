@@ -109,7 +109,7 @@ Product Frame、PRD、代码、Schema 和任务系统继续作为各自范围内
 | `cairn init [path]` | 在不覆盖已有文件的情况下接入协议 |
 | `cairn validate [path]` | 检查目录结构、配置、topic 和日志限制 |
 | `cairn status [path]` | 查看最近变化和 topic 状态 |
-| `cairn handoff new ID --title T --from A --to B` | 为另一个 Agent 创建交接单 |
+| `cairn handoff new ID --title T --from A --to B [--planner-url URL]` | 为另一个 Agent 创建交接单 |
 | `cairn handoff status [path]` | 列出交接单、状态和未回答的问题 |
 | `cairn test write --agent NAME [path]` | 写入一个不显示在终端中的交接验证码 |
 | `cairn test read --agent NAME [path]` | 由另一个 Agent 读取并验证验证码 |
@@ -129,6 +129,9 @@ cairn handoff new site-v1 --title "个人网站 Skill v1" --from claude --to cod
 
 这会创建 `cairn/handoffs/site-v1.md`。`cairn init` 会把 `cairn/handoffs/` 加进
 `.gitignore`，因为交接单经常带有本机路径和私有信息。
+
+可以加上 `--planner-url https://...`，记录计划方的地址。AirJelly 这类工具会在
+需要重新规划时，用它把人送回计划方。这个字段可选，只接受 `https://` 链接。
 
 | 部分 | 谁负责 | 规则 |
 |---|---|---|

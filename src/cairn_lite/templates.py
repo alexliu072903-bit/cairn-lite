@@ -114,7 +114,9 @@ Executor:
 Planner:
 
 1. Write the handoff with `cairn handoff new`. Keep it short: point to
-   decisions and sources instead of repeating them.
+   decisions and sources instead of repeating them. Set `planner_url` (an
+   `https://` link to where you can be reached) so tools can send the human
+   back to you when the work needs re-planning.
 2. On re-entry, read the Readback, Log, and Questions before planning again.
    Answer a question by changing `- [ ]` to `- [x]` and writing the answer
    under it; ask the human owner when the answer is theirs to give.
@@ -200,7 +202,7 @@ handoff: {id}
 status: open
 from: {from_agent}
 to: {to_agent}
-created: {date}
+{planner_line}created: {date}
 ---
 
 # {title}
