@@ -172,9 +172,3 @@ Cairn Lite 不会向外部服务发送数据。写入任何外部知识库前，
 ## License
 
 [MIT](LICENSE)
-
-## 致谢
-
-Cairn Lite 的灵感来自
-[iBlinkQ/project-cairn](https://github.com/iBlinkQ/project-cairn)。当前实现
-围绕更小、更偏本地、与 Agent 无关的协议重新编写，没有复制原项目代码。
